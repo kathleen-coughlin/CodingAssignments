@@ -1,0 +1,59 @@
+---
+title: "Palmer Penguin Test Markdown"
+author: "Kathleen Coughlin"
+date: "2022-08-02"
+output: html_document
+---
+# Palmer Penguins Practice Analysis
+
+## Setting up my environment
+
+Notes: setting up my R environment by loading the 'tidyverse' and 'palmerpenguins' packages:
+```{r loading packages}
+library(tidyverse)
+library(palmerpenguins)
+
+```
+ 
+
+## Dataset Overview
+
+```{r cars}
+str(penguins)
+summary(penguins)
+```
+
+## Visualization
+Here we go through a series of visualizations
+
+### Flipper Length vs. Body Mass
+
+```{r plot}
+
+ggplot(data=penguins) +
+	geom_point(mapping = aes(x=flipper_length_mm, y=body_mass_g, color=species)) + 
+	labs(title = "Palmer Penguins: Body Mass vs. Flipper Length", 
+		subtitle = "Sample of Three Penguin Species", 
+		caption = "Data collected by Dr. Kristen Gorman") +
+    annotate("text", 
+             x=220, 
+             y=3500, 
+             label="The Gentoos are the largest", 
+             color="purple", 
+             fontface = "bold", 
+             size = 4.5, 
+             angle= 25)
+
+    
+```
+
+### Separated by Species
+
+```{r plot 2}
+# Separate scatter plots for each species
+ggplot(data=penguins, aes(x=flipper_length_mm, y=body_mass_g))+
+	geom_point(mapping=aes(color=species))+ 
+    facet_wrap(~species)
+
+```
+

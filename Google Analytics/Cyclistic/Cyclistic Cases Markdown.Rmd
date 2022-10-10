@@ -1,0 +1,417 @@
+---
+title: "Cyclistic Bike Share Test Case"
+author: "Kathleen Coughlin"
+date: "2022-08-02"
+output: html_document
+---
+
+# Cyclistic Bike Share Case: Annual vs. Casual Membership
+
+![Cyclistic Bike-Share Logo](https://raw.githubusercontent.com/labwilliam/data_analysis_projects/main/cyclistic_bike_share/scripts/logo.png)
+
+In 2016, Cyclistic launched a successful bike-share offering. Since then, the program has grown to a fleet of 5,824 bicycles that are geotracked and locked into a network of 692 stations across Chicago. The bikes can be unlocked from one station and returned to any other station in the system anytime. Cyclistic sets itself apart by also offering reclining bikes, hand tricycles, and cargo bikes, making bike-share more inclusive to people with disabilities and riders who can’t use a standard two-wheeled bike. The majority of riders opt for traditional bikes; about 8% of riders use the assistive options. Cyclistic users are more likely to ride for leisure, but about 30% use them to commute to work each day
+
+Until now, Cyclistic’s marketing strategy relied on building general awareness and appealing to broad consumer segments. One approach that helped make these things possible was the flexibility of its pricing plans: single-ride passes, full-day passes, and annual memberships. Customers who purchase single-ride or full-day passes are referred to as casual riders. Customers who purchase annual memberships are Cyclistic members. 
+
+**Business Task:** Determine how casual riders and annual members use Cyclistic bikes differently. 
+
+**Key Stakeholders:** Lily Moreno (Director of Marketing at Cyclistic), the rest of the Cyclistic marketing team, & the Cyclistic executive team
+
+## The data
+
+Cyclistic has provided historical trip data to analyze so that I may identify trends. You may access the trip data from 2013 to 2022 [here](https://divvy-tripdata.s3.amazonaws.com/index.html).
+
+### Available Information
+
+The way that the data was organized has changed over time. This data will need to be cleaned and aggregated so that trends can be accurately determined. 
+
+* For 2013, I have been provided a file for trip data and a file for customer data for the year.
+* For Q1 2014 through Q1 2020, the trip and customer data have been merged and broken out by fiscal quarter. 
+* From April 2020 through June 2022, the files are divided by month.
+
+For further study, analysts may want to look at the full data set but in order to keep data timely and relevant, I will be analyzing the files for the preceding 12 months, July 2021-June 2022. 
+
+
+### Uploading the Files
+In order to inspect and process this massive dataset, I uploaded it to GoogleCloud and to process in BiqQuery. Each file contains tens or hundreds of thousands of observations which is just not manageable for spreadsheets. A relational database will be more effective. 
+
+Having downloaded the datasets provided, uploaded them to Google Cloud Storage, and created tables in BigQuery, the data is ready for inspection and cleaning. 
+
+The files have been uploaded as: 
+
+* 202107-divvy-tripdata
+* 202108-divvy-tripdata
+* 202109-divvy-tripdata
+* 202110-divvy-tripdata
+* 202111-divvy-tripdata
+* 202112-divvy-tripdata
+* 202201-divvy-tripdata
+* 202202-divvy-tripdata
+* 202203-divvy-tripdata
+* 202204-divvy-tripdata
+* 202205-divvy-tripdata
+* 202206-divvy-tripdata
+
+Each of the twelve files that will be used for this analysis contains information on each Cyclistic bike trip during that time period. The following variables are listed in each document:
+
+* **Trip features**
+    + *ride_id* : a unique ID number for each trip taken
+    + *rideable_type* : a description of the type of bike rented
+    + *member_casual* : whether the person who rented the bike had a membership or is a casual user
+    + *started_at* : a timestamp of the date and time the ride started
+    + *ended_at* : a timestamp of the date and time the ride ended
+* **Station location information**
+    + *start_station_name* : the name of the station where the ride started, usually the intersection where the docking station is located
+    + *start_station_id* : the ID number for the starting station
+    + *end_station_name* : the name of the station where the ride ended, usually the intersection where the docking station is located
+    + *end_station_id* : the ID number for the ending station
+    + *start_lat* : the latitude of the starting station
+    + *start_lng* : the longitude of the starting station
+    + *end_lat* : the latitude of the ending station
+    + *end_lng* : the longitude of the ending station
+    
+
+## Processing the Data in Big Query
+
+Upon inspecting the column names and types of each table, I determined that it would be possible to combine the tables and then clean them as one large table rather than cleaning each table individually. 
+
+### Unioning the Tables
+
+I determined in my initial insepction that the data issues that needed to be cleaned would not interfere with the successful aggregation of the data. For that reason, I merged the twelve data sets here then cleaned them together so I would not need to run queries repeatedly.
+
+```{sql Merging_All, eval=FALSE}
+CREATE TABLE `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206` AS (
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202107-divvy-tripdata`
+  UNION  ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202108-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202109-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202110-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202111-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202112-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202201-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202202-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202203-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202204-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202205-divvy-tripdata`
+  UNION ALL
+  SELECT * FROM  `cyclistic-case-study-358213.Trip_Datasets.202206-divvy-tripdata`
+  );
+
+```
+
+This new table is massive with 5,900,385 rows. 
+
+### Inspecting the Data
+
+#### Checking for Duplicate Values
+
+First, I checked to make sure that each trip appears in the dataset only once.
+```{sql Check_Duplicates, eval=FALSE}
+SELECT
+  COUNT(*) AS num_of_rows,
+  COUNT(DISTINCT ride_id) AS num_of_rides
+FROM
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206` ;
+
+```
+
+If the number of rows were greater than the number of ride IDs, then that means that there are IDs duplicated in the table or that some values in the ride ID column were null. This SQL statement return an equal number of rows and ride_ids meaning there were no duplicate entries in the data set. 
+
+#### Checking for Missing Values
+
+For each variable, I used SQL to check for missing or NULL values, running code such as: 
+```{sql Check_Missing, eval=FALSE}
+-- Check for NULL ride_id
+SELECT
+  count(*) AS num_of_rows
+FROM
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  ride_id IS NULL;
+  
+-- Check for NULL member_casual
+SELECT
+  count(*) AS num_of_rows
+FROM
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  member_casual IS NULL;
+```
+
+
+I found that many of the rows had some values missing. Of the total 5,900,385 trips reported (i.e. rows in the table) and the following number missing values:
+
+| Variable | Number of NULLs |
+| -------- | :-------------: | 
+| ride_id | 0 |
+| rideable_type | 0 |
+| started_at | 0 |
+| ended_at | 0 |
+| start_station_name | 836,018 |
+| start_station_id | 836,015 |
+| end_station_name | 892,103 |
+| end_station_id | 892,103 |
+| start_lat |  0 |
+| start_lng | 0 |
+| end_lat | 5,374 |
+| end_lng | 5,374 |
+| member_casual | 0 |
+
+The majority of missing values were from station names and IDs. I then checked how many rows were missing the station name AND the station ID AND the coordinates of the start and end stations. If observations have one of these, I should be able to fill in the missing values based on what is present. 
+
+```{sql Any_start_variables, eval=FALSE}
+SELECT
+  count(*) AS rows_no_start_data
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206` 
+WHERE
+  start_station_ID IS NULL AND 
+  start_station_name IS NULL AND 
+  start_lat IS NULL AND
+  start_lng IS NULL;
+```
+
+This query returned 0 entries, so I will be able to determine the start location for all trips in the July 2021 file. I checked the same information for the end locations. 
+
+```{sql Any_end_variables, eval=FALSE}
+SELECT
+  count(*) AS rows_no_end_data
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  end_station_ID IS NULL AND 
+  end_station_name IS NULL AND 
+  end_lat IS NULL AND
+  end_lng IS NULL;
+```
+
+####Checking for consistant formatting
+
+```{sql variable_consist, eval=FALSE}
+--  membership type naming
+SELECT
+  COUNT(*) AS num_of_rows,
+  member_casual
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+GROUP BY
+  member_casual
+ORDER BY
+  member_casual;
+  
+-- bike type naming
+SELECT
+  COUNT(*) AS num_of_rows,
+  rideable_type
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+GROUP BY
+  rideable_type
+ORDER BY
+  rideable_type;
+
+
+--  ride_id length
+SELECT
+  LENGTH(ride_id),
+  COUNT(DISTINCT ride_id)
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+GROUP BY
+  LENGTH(ride_id);
+  
+-- start_station_id formats
+SELECT
+  DISTINCT start_station_id,
+  COUNT(start_station_id) AS rides_starting_here_id
+FROM
+ `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+GROUP BY
+  start_station_id
+ORDER BY
+  rides_starting_here_id DESC;
+```
+
+
+### Fixing Data Issues
+
+All observations have at least one way to determine the start_location.However, there were 5,374 rows with no data on the end location (end_station_name, end_station_id, or coordinates for the ending station). 
+
+```{sql start_and_end_locations, eval=FALSE}
+SELECT
+  count(*) AS rows_no_start_data
+FROM
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  start_station_ID IS NULL AND 
+  start_station_name IS NULL AND 
+  start_lat IS NULL AND
+  start_lng IS NULL;
+
+
+SELECT
+  count(*) AS rows_no_end_data
+FROM
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  end_station_ID IS NULL AND 
+  end_station_name IS NULL AND 
+  end_lat IS NULL AND
+  end_lng IS NULL;
+
+```
+
+The first query returned 0 entries, so I will be able to determine the start location for all trips in the table, even if they are missing a station name or ID. I checked the same information for the end locations. and there were 5.347 observations that did not have any end location information. I investigated further but could not find any discernible pattern to the missing end locations. For that reason and the fact that they constitute such a small portion of total cases (0.09%), I removed these rows from the table.
+
+```{sql drop_null_end_rows, eval=FALSE}
+DELETE
+  `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+WHERE
+  end_station_ID IS NULL AND 
+  end_station_name IS NULL AND 
+  end_lat IS NULL AND
+  end_lng IS NULL;
+  
+-- This statement removed 5,347 rows from combined-divvy-tripdata-202107-202206
+
+```
+
+There are other ways in which the data is not as clean as it could be. For example, the station names do not seem to be formatted in a uniform way. Some are just numbers and some are combinations of numbers and letters. They are also different lengths. Although that may affect other analyses, it will not impact the analysis of usage among membership. Therefore, I am leaving those as is. 
+
+
+## Exporting the Data for Analysis and Visualization in R
+
+I exported the combined table as a csv file for analysis and visualization in R. 
+
+```{sql export_csvs, eval=FALSE}
+EXPORT DATA
+  OPTIONS (
+    uri = 'gs://cyclistic-testcase-datasets/Exported/combined-trips.csv',
+    format = 'CSV',
+    overwrite = true,
+    header = true,
+    field_delimiter = ';')
+AS (
+  SELECT *
+  FROM   `cyclistic-case-study-358213.Trip_Datasets.combined-divvy-tripdata-202107-202206`
+  ORDER BY ride_id
+);
+```
+
+
+```{r environment setup}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+
+tripdata <- read.csv("~/R Programs/Exported_combined_trips.csv") # Import data set
+
+```
+
+Creating new columns
+
+```{r}
+all_trips <- all_trips %>%
+    mutate(year_started = as.numeric(str_sub(started_at, 1, 4)), 
+           month_started = as.numeric(str_sub(started_at, 6, 7)), 
+           day_started = as.numeric(str_sub(started_at, 9, 10)), 
+           hour_started = as.numeric(str_sub(started_at, 12, 13)))
+
+all_trips$date <- as.Date(all_trips$started_at)
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+all_trips$day_of_week <- ordered(all_trips$day_of_week, levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+           
+# Time of day factor
+
+all_trips$time_of_day_bucket <- all_trips$time_of_day_bucket %>%
+    as.character(
+        if(all_trips$hour_started <6){
+            all_trips$time_of_day_bucket= "Between midnight and 6am"
+        } else if(all_trips$hour_started <9){ 
+            all_trips$time_of_day_bucket ="Between 6am and 9am"       
+        } else if(all_trips$hour_started <12){
+            all_trips$time_of_day_bucket ="Between 9am and 12pm"     
+        } else if (all_trips$hour_started <15){
+            all_trips$time_of_day_bucket ="Between 12pm and 3pm"            
+        } else if (all_trips$hour_started <18){
+            all_trips$time_of_day_bucket ="Between 3pm and 6pm"          
+        } else if (all_trips$hour_started <21){
+            all_trips$time_of_day_bucket ="Between 6pm and 9pm"            
+        } else {all_trips$time_of_day_bucket[i] ="Between 9pm and midnight"})
+
+all_trips$time_of_day_bucket <- ordered(all_trips$time_of_day_bucket, levels = c("Between midnight and 6am", "Between 6am and 9am", "Between 9am and 12pm", "Between 12pm and 3pm", "Between 3pm and 6pm", "Between 6pm and 9pm","Between 9pm and midnight"))
+
+# Ride length
+
+all_trips$ride_length <- as.numeric(
+    as.character(
+        difftime(all_trips$ended_at, all_trips$started_at)
+        )
+    )
+
+# Remove "bad" data
+# The dataframe includes a few hundred entries when bikes were taken out of docks and checked for quality by Divvy or ride_length was negative
+# We will create a new version of the dataframe (v2) since data is being removed
+ all_trips <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0),]
+```
+
+
+
+
+
+
+## Analysis
+```{r}
+aggregate(all_trips$ride_length ~ all_trips$member_casual, FUN = mean)
+aggregate(all_trips$ride_length ~ all_trips$member_casual, FUN = median)
+aggregate(all_trips$ride_length ~ all_trips$member_casual, FUN = max)
+aggregate(all_trips$ride_length ~ all_trips$member_casual, FUN = min)
+aggregate(all_trips$ride_length ~ all_trips$member_casual + all_trips$day_of_week, FUN = mean)
+aggregate(all_trips$ride_length ~ all_trips$member_casual + all_trips$day_of_week, FUN = mean)
+
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%  #creates weekday field using wday()
+  group_by(member_casual, weekday) %>%  #groups by usertype and weekday
+  summarise(number_of_rides = n()							#calculates the number of rides and average duration 
+  ,average_duration = mean(ride_length)) %>% 		# calculates the average duration
+  arrange(member_casual, weekday)								# sorts
+
+
+```
+
+## Visualize
+
+```{r}
+# Let's visualize the number of rides by rider type
+all_trips %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+
+# Let's create a visualization for average duration
+all_trips %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")
+
+```
+
